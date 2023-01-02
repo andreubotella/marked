@@ -53,6 +53,9 @@ export class Lexer {
   constructor(options) {
     this.tokens = [];
     this.tokens.links = Object.create(null);
+    if (options.footnotes) {
+      this.tokens.footnotes = Object.create(null);
+    }
     this.options = options || defaults;
     this.options.tokenizer = this.options.tokenizer || new Tokenizer();
     this.tokenizer = this.options.tokenizer;
@@ -81,6 +84,12 @@ export class Lexer {
         rules.inline = inline.gfm;
       }
     }
+
+    if (this.options.footnotes) {
+      rules.block = { ...rules.block, footnote: block.footnote };
+      rules.inline = { ...rules.inline, footnoteRef: inline.footnoteRef };
+    }
+
     this.tokenizer.rules = rules;
   }
 
@@ -222,6 +231,22 @@ export class Lexer {
       if (token = this.tokenizer.html(src)) {
         src = src.substring(token.raw.length);
         tokens.push(token);
+        continue;
+      }
+
+      // footnote
+      if (token = this.tokenizer.footnote(src)) {
+        src = src.substring(token.raw.length);
+        lastToken = tokens[tokens.length - 1];
+        if (lastToken && (lastToken.type === 'paragraph' || lastToken.type === 'text')) {
+          lastToken.raw += '\n' + token.raw;
+          lastToken.text += '\n' + token.raw;
+          this.inlineQueue[this.inlineQueue.length - 1].src = lastToken.text;
+        } else if (!this.tokens.footnotes[token.tag]) {
+          this.tokens.footnotes[token.tag] = {
+            tokens: token.tokens
+          };
+        }
         continue;
       }
 
@@ -401,8 +426,34 @@ export class Lexer {
         continue;
       }
 
-      // reflink, nolink
+      // reflink
       if (token = this.tokenizer.reflink(src, this.tokens.links)) {
+        src = src.substring(token.raw.length);
+        lastToken = tokens[tokens.length - 1];
+        if (lastToken && token.type === 'text' && lastToken.type === 'text') {
+          lastToken.raw += token.raw;
+          lastToken.text += token.text;
+        } else {
+          tokens.push(token);
+        }
+        continue;
+      }
+
+      // footnoteRef
+      if (token = this.tokenizer.footnoteRef(src, this.tokens.footnotes)) {
+        src = src.substring(token.raw.length);
+        lastToken = tokens[tokens.length - 1];
+        if (lastToken && token.type === 'text' && lastToken.type === 'text') {
+          lastToken.raw += token.raw;
+          lastToken.text += token.text;
+        } else {
+          tokens.push(token);
+        }
+        continue;
+      }
+
+      // nolink
+      if (token = this.tokenizer.nolink(src, this.tokens.links)) {
         src = src.substring(token.raw.length);
         lastToken = tokens[tokens.length - 1];
         if (lastToken && token.type === 'text' && lastToken.type === 'text') {

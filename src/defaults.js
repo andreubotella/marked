@@ -4,6 +4,7 @@ export function getDefaults() {
     baseUrl: null,
     breaks: false,
     extensions: null,
+    footnotes: false,
     gfm: true,
     headerIds: true,
     headerPrefix: '',

@@ -262,6 +262,7 @@ export class Tokenizer {
 
             if (nextLine.search(/[^ ]/) >= indent || !nextLine.trim()) { // Dedent if possible
               itemContents += '\n' + nextLine.slice(indent);
+              line = nextLine.slice(indent);
             } else {
               // not enough indentation
               if (blankLine) {
@@ -283,15 +284,14 @@ export class Tokenizer {
               }
 
               itemContents += '\n' + nextLine;
+              line = nextLine;
             }
 
-            if (!blankLine && !nextLine.trim()) { // Check if current line is blank
-              blankLine = true;
-            }
+            // Check if current line is blank
+            blankLine = !nextLine.trim();
 
             raw += rawLine + '\n';
             src = src.substring(rawLine.length + 1);
-            line = nextLine.slice(indent);
           }
         }
 
@@ -374,6 +374,101 @@ export class Tokenizer {
         token.tokens = this.lexer.inline(text);
       }
       return token;
+    }
+  }
+
+  footnote(src) {
+    const cap = this.rules.block.footnote.exec(src);
+    if (cap) {
+      const tag = cap[1].toLowerCase().replace(/\s+/g, ' ');
+      let raw = cap[0];
+      let contents = cap[2];
+
+      let line = cap[2];
+      let blankLine = !cap[2];
+      let numBlankLines = 0;
+
+      src = src.substring(raw.length);
+
+      const nextBulletRegex = /^ {0,3}(?:[*+-]|\d{1,9}[.)])((?:[ \t][^\n]*)?(?:\n|$))/;
+      const hrRegex = /^ {0,3}((?:- *){3,}|(?:_ *){3,}|(?:\* *){3,})(?:\n+|$)/;
+      const fencesBeginRegex = /^ {0,3}(?:```|~~~)/;
+      const headingBeginRegex = /^ {0,3}#/;
+
+      // Check if following lines should be included in footnote
+      while (src) {
+        const nextLine = src.split('\n', 1)[0];
+
+        // End footnote if found code fences
+        if (fencesBeginRegex.test(nextLine)) {
+          break;
+        }
+
+        // End list item if found start of new heading
+        if (headingBeginRegex.test(nextLine)) {
+          break;
+        }
+
+        // End list item if found start of new bullet
+        if (nextBulletRegex.test(nextLine)) {
+          break;
+        }
+
+        // Horizontal rule found
+        if (hrRegex.test(nextLine)) {
+          break;
+        }
+
+        if (!nextLine.trim()) {
+          blankLine = true;
+          numBlankLines++;
+        } else if (nextLine.search(/[^ ]/) >= 4) { // Dedent if possible
+          contents += '\n'.repeat(numBlankLines + 1) + nextLine.slice(4);
+          line = nextLine.slice(4);
+          blankLine = false;
+          numBlankLines = 0;
+        } else {
+          // not enough indentation
+          if (blankLine) {
+            break;
+          }
+
+          // paragraph continuation unless last line was a different block level element
+          if (line.search(/[^ ]/) >= 4) { // indented code block
+            break;
+          }
+          if (fencesBeginRegex.test(line)) {
+            break;
+          }
+          if (headingBeginRegex.test(line)) {
+            break;
+          }
+          if (hrRegex.test(line)) {
+            break;
+          }
+
+          contents += '\n'.repeat(numBlankLines + 1) + nextLine;
+          line = nextLine;
+          blankLine = false;
+          numBlankLines = 0;
+        }
+
+        raw += nextLine + '\n';
+        src = src.substring(nextLine.length + 1);
+      }
+
+      const top = this.lexer.state.top;
+      this.lexer.state.top = true;
+      const tokens = this.lexer.blockTokens(contents);
+      this.lexer.state.top = top;
+
+      return {
+        type: 'footnote',
+        tag,
+        raw,
+        tokens,
+        text: contents
+      };
     }
   }
 
@@ -585,10 +680,31 @@ export class Tokenizer {
   }
 
   reflink(src, links) {
-    let cap;
-    if ((cap = this.rules.inline.reflink.exec(src))
-        || (cap = this.rules.inline.nolink.exec(src))) {
+    const cap = this.rules.inline.reflink.exec(src);
+    if (cap) {
       let link = (cap[2] || cap[1]).replace(/\s+/g, ' ');
+      link = links[link.toLowerCase()];
+      if (!link) {
+        if (this.options.footnotes
+          && !cap[0].startsWith('!') && cap[1].startsWith('^')) {
+          // Give it a chance to parse as a footnote.
+          return undefined;
+        }
+        const text = cap[0].charAt(0);
+        return {
+          type: 'text',
+          raw: text,
+          text
+        };
+      }
+      return outputLink(cap, link, cap[0], this.lexer);
+    }
+  }
+
+  nolink(src, links) {
+    const cap = this.rules.inline.nolink.exec(src);
+    if (cap) {
+      let link = cap[1].replace(/\s+/g, ' ');
       link = links[link.toLowerCase()];
       if (!link) {
         const text = cap[0].charAt(0);
@@ -599,6 +715,27 @@ export class Tokenizer {
         };
       }
       return outputLink(cap, link, cap[0], this.lexer);
+    }
+  }
+
+  footnoteRef(src, footnotes) {
+    const cap = this.rules.inline.footnoteRef.exec(src);
+    if (cap) {
+      const ref = cap[1].replace(/\s+/g, ' ');
+      const footnote = footnotes[ref.toLowerCase()];
+      if (!footnote) {
+        const text = cap[0].charAt(0);
+        return {
+          type: 'text',
+          raw: text,
+          text
+        };
+      }
+      return {
+        type: 'footnote-ref',
+        raw: cap[0],
+        ref
+      };
     }
   }
 

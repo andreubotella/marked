@@ -17,6 +17,9 @@ export class Parser {
     this.renderer.options = this.options;
     this.textRenderer = new TextRenderer();
     this.slugger = new Slugger();
+    // this.footnotes[idx] is an object { ref: string, numBackrefs: number }
+    this.footnotes = [];
+    this.footnoteRefToNumber = {};
   }
 
   /**
@@ -203,6 +206,20 @@ export class Parser {
       }
     }
 
+    if (top && tokens.footnotes && this.footnotes.length > 0) {
+      body = '';
+      for (let i = 0; i < this.footnotes.length; i++) {
+        const { ref, numBackrefs } = this.footnotes[i];
+        const footnote = tokens.footnotes[ref];
+        const footnoteBody = this.parse(
+          this.fixFootnoteTokens(footnote.tokens, ref, numBackrefs),
+          false
+        );
+        body += this.renderer.footnote(ref, footnoteBody);
+      }
+      out += this.renderer.footnoteSection(body);
+    }
+
     return out;
   }
 
@@ -266,6 +283,27 @@ export class Parser {
           out += renderer.del(this.parseInline(token.tokens, renderer));
           break;
         }
+        case 'footnote-ref': {
+          let footnoteNumber, numBackrefs;
+          if (token.ref in this.footnoteRefToNumber) {
+            footnoteNumber = this.footnoteRefToNumber[token.ref];
+            this.footnotes[footnoteNumber - 1].numBackrefs++;
+            numBackrefs = this.footnotes[footnoteNumber - 1].numBackrefs;
+          } else {
+            this.footnotes.push({
+              ref: token.ref,
+              numBackrefs: 1
+            });
+            footnoteNumber = this.footnoteRefToNumber[token.ref] = this.footnotes.length;
+            numBackrefs = 1;
+          }
+          out += renderer.footnoteRef(token.ref, footnoteNumber, numBackrefs);
+          break;
+        }
+        case 'footnote-backref': {
+          out += renderer.footnoteBackref(token.ref, token.backrefNumber);
+          break;
+        }
         case 'text': {
           out += renderer.text(token.text);
           break;
@@ -282,5 +320,57 @@ export class Parser {
       }
     }
     return out;
+  }
+
+  fixFootnoteTokens(tokens, ref, numBackrefs) {
+    // The first backref is special, because it doesn't need the backref number
+    // on the ref, and because the space can be merge with previous text.
+
+    let paragraph;
+
+    {
+      const backref = {
+        type: 'footnote-backref',
+        ref,
+        backrefNumber: 1
+      };
+
+      if (['paragraph', 'text'].includes(tokens.at(-1)?.type)) {
+        paragraph = tokens.at(-1);
+        if (paragraph.tokens.at(-1)?.type === 'text') {
+          paragraph.tokens.at(-1).text += ' ';
+        } else {
+          paragraph.tokens.push({
+            type: 'text',
+            raw: '',
+            text: ' '
+          });
+        }
+        paragraph.tokens.push(backref);
+      } else {
+        paragraph = {
+          type: 'text',
+          raw: '',
+          text: '',
+          tokens: [backref]
+        };
+        tokens.push(paragraph);
+      }
+    }
+
+    for (let i = 2; i <= numBackrefs; i++) {
+      paragraph.tokens.push({
+        type: 'text',
+        raw: '',
+        text: ' '
+      });
+      paragraph.tokens.push({
+        type: 'footnote-backref',
+        ref,
+        backrefNumber: i
+      });
+    }
+
+    return tokens;
   }
 }

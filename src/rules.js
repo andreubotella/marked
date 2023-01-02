@@ -27,6 +27,7 @@ export const block = {
     + ')',
   def: /^ {0,3}\[(label)\]: *(?:\n *)?([^<\s][^\s]*|<.*?>)(?:(?: +(?:\n *)?| *\n *)(title))? *(?:\n+|$)/,
   table: noopTest,
+  footnote: noopTest,
   lheading: /^((?:.|\n(?!\n))+?)\n {0,3}(=+|-+) *(?:\n+|$)/,
   // regex template, placeholders will be replaced according to different paragraph
   // interruption rules of commonmark and the original markdown spec:
@@ -86,6 +87,14 @@ block.blockquote = edit(block.blockquote)
  */
 
 block.normal = merge({}, block);
+
+/**
+ * Footnotes
+ */
+block.footnote = edit(/^ {0,3}\[\^(label)\]: *([^\n]*)(?:\n|$)/)
+  .replace('label', block._label)
+  .replace('paragraph', block.paragraph)
+  .getRegex();
 
 /**
  * GFM Block Grammar
@@ -164,6 +173,7 @@ export const inline = {
     + '|^<!\\[CDATA\\[[\\s\\S]*?\\]\\]>', // CDATA section
   link: /^!?\[(label)\]\(\s*(href)(?:\s+(title))?\s*\)/,
   reflink: /^!?\[(label)\]\[(ref)\]/,
+  footnoteRef: noopTest,
   nolink: /^!?\[(ref)\](?:\[\])?/,
   reflinkSearch: 'reflink|nolink(?!\\()',
   emStrong: {
@@ -250,6 +260,10 @@ inline.reflinkSearch = edit(inline.reflinkSearch, 'g')
  */
 
 inline.normal = merge({}, inline);
+
+inline.footnoteRef = edit(/^\[\^(ref)\]/)
+  .replace('ref', block._label)
+  .getRegex();
 
 /**
  * Pedantic Inline Grammar

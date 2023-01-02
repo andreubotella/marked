@@ -128,6 +128,27 @@ export class Renderer {
   }
 
   /**
+   * @param {string} content
+   */
+  footnoteSection(content) {
+    return '<section class="footnotes" data-footnotes>\n'
+      + '<ol>\n'
+      + content
+      + '</ol>\n'
+      + '</section>\n';
+  }
+
+  /**
+   * @param {string} ref
+   * @param {string} content
+   */
+  footnote(ref, content) {
+    return '<li id="fn-' + encodeURI(ref) + '">\n'
+      + content
+      + '</li>\n';
+  }
+
+  /**
    * span level renderer
    * @param {string} text
    */
@@ -175,6 +196,41 @@ export class Renderer {
       out += ' title="' + title + '"';
     }
     out += '>' + text + '</a>';
+    return out;
+  }
+
+  /**
+   * @param {string} ref
+   * @param {number} number
+   * @param {number} backrefNumber
+   */
+  footnoteRef(ref, number, backrefNumber) {
+    const href = `#fn-${encodeURI(ref)}`;
+    let id = `fnref-${encodeURI(ref)}`;
+    if (backrefNumber > 1) {
+      id += `-${backrefNumber}`;
+    }
+    let out = '<sup class="footnote-ref">';
+    out += '<a href="' + href + '" id="' + id + '" data-footnote-ref>';
+    out += number + '</a></sup>';
+    return out;
+  }
+
+  /**
+   * @param {string} backref
+   * @param {number} backrefNumber
+   */
+  footnoteBackref(backref, backrefNumber) {
+    if (backrefNumber > 1) {
+      backref += `-${backrefNumber}`;
+    }
+    let out = '<a href="#fnref-' + encodeURI(backref) + '" '
+      + 'class="footnote-backref" data-footnote-backref '
+      + 'aria-label="Back to content">↩';
+    if (backrefNumber > 1) {
+      out += '<sup class="footnote-ref">' + backrefNumber + '</sup>';
+    }
+    out += '</a>';
     return out;
   }
 
